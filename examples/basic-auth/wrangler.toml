@@ -1,0 +1,32 @@
+#:schema node_modules/wrangler/config-schema.json
+name = "basic-auth-service"
+main = "./src/worker.ts"
+compatibility_date = "2024-05-24"
+
+[[d1_databases]]
+binding = "DATABASE"
+database_name = "show-messaging"
+database_id = "ab7a64a7-5111-44b7-a56e-926fe5f90493"
+preview_database_id = "ab7a64a7-5111-44b7-a56e-926fe5f90493"
+
+# [[services]]
+# binding = "USERS_SERVICE"
+# service = "users-service"
+
+# [vars]
+# ENVIRONMENT = "production"
+
+[env.staging]
+name = "sessions-service-staging"
+vars = { ENVIRONMENT = "staging" }
+
+[env.development]
+name = "sessions-service-dev"
+vars = { ENVIRONMENT = "development" }
+
+[durable_objects]
+bindings = [{ name = "UserAggregate", class_name = "UserAggregate" }]
+
+[[migrations]]
+tag = "v1"
+new_classes = ["UserAggregate"]

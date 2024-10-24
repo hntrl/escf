@@ -1,0 +1,27 @@
+### Get Session Info
+GET http://localhost:8787/v1/user
+Cookie: auth_session=wdLwl-bHM3D-EE1INO_5q
+
+### Login
+POST http://localhost:8787/v1/user/login
+Content-Type: application/json
+
+{
+  "email": "test@test.com",
+  "password": "password"
+}
+
+### Register
+POST http://localhost:8787/v1/user/register
+Content-Type: application/json
+
+{
+  "avatar": null,
+  "name": "Homer Simpson",
+  "email": "test@test.com",
+  "password": "password"
+}
+
+### Logout
+POST http://localhost:8787/v1/user/logout
+Cookie: auth_session=wdLwl-bHM3D-EE1INO_5q
