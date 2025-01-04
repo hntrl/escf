@@ -43,13 +43,13 @@ export abstract class ProcessBase<
     protected effects: TEffects
   ) {}
 
-  async queue(batch: MessageBatch<SystemEvent<TAggregates>>) {
+  async queue(batch: MessageBatch<SystemEvent<TAggregates>>): Promise<void> {
     for (const event of batch.messages) {
       await this.onEvent(event.body);
     }
   }
 
-  async onEvent(event: SystemEvent<TAggregates>) {
+  async onEvent(event: SystemEvent<TAggregates>): Promise<void> {
     const handler = this.eventHandlers[event.type as keyof TEventHandlers] as
       | ProcessEventHandler<TAggregates, typeof event.type>
       | undefined;
