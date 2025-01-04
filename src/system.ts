@@ -153,20 +153,21 @@ export const system = Object.assign(
   {
     aggregates: <TAggregates extends SystemAggregateMap>(
       aggregates: TAggregates
-    ) => aggregates,
+    ): TAggregates => aggregates,
     projections: <
       TAggregates extends SystemAggregateMap,
       TProjections extends SystemProjectionMap<TAggregates>
     >(
       aggregates: TAggregates,
       factory: (env: Env) => TProjections
-    ) => factory,
+    ): ((env: Env) => TProjections) => factory,
     processes: <
       TAggregates extends SystemAggregateMap,
       TProcesses extends SystemProcessMap<TAggregates>
     >(
       aggregates: TAggregates,
       factory: (env: Env) => TProcesses
+    ): ((env: Env) => TProcesses) => factory,
     eventStore: <TAggregates extends SystemAggregateMap>(
       aggregates: TAggregates,
       factory: EventStoreInitializer<TAggregates>
