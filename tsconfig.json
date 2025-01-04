@@ -1,16 +1,14 @@
 {
   "compilerOptions": {
-
-		"incremental": true,  /* Enable incremental compilation by reading/writing information from prior compilations to a file. */
+		"incremental": true,
+		"tsBuildInfoFile": "./node_modules/.tmp/tsconfig.lib.tsbuildinfo",
 
     /* Projects */
-		"composite": true, 																/* Enable constraints that allow a TypeScript project to be used with project references. */
-		"disableSourceOfProjectReferenceRedirect": true,  /* Disable preferring source files instead of declaration files when referencing composite projects */
+		"disableSourceOfProjectReferenceRedirect": true  /* Disable preferring source files instead of declaration files when referencing composite projects */,
 
 		/* Language and Environment */
-		"target": "esnext" /* Set the JavaScript language version for emitted JavaScript and include compatible library declarations. */,
-		"lib": ["esnext"]  /* Specify a set of bundled library declaration files that describe the target runtime environment. */,
-		"jsx": "react-jsx" /* Specify what JSX code is generated. */,
+		"target": "esnext"  /* Set the JavaScript language version for emitted JavaScript and include compatible library declarations. */,
+		"lib": ["esnext"]   /* Specify a set of bundled library declaration files that describe the target runtime environment. */,
 
 		/* Modules */
 		"module": "esnext"         /* Specify what module code is generated. */,
@@ -19,17 +17,16 @@
 		"pretty": true,
 
 		/* Emit */
-		// "declaration": true,         /* Generate .d.ts files from TypeScript and JavaScript files in your project. */
-		// "declarationMap": true,      /* Create sourcemaps for d.ts files. */
-		// "emitDeclarationOnly": true, /* Only output d.ts files and not JavaScript files. */
-		"sourceMap": true,              /* Create source map files for emitted JavaScript files. */
-		// "outFile": "./",             /* Specify a file that bundles all outputs into one JavaScript file. If `declaration` is true, also designates a file that bundles all .d.ts output. */
-		// "outDir": "./",              /* Specify an output folder for all emitted files. */
-		// "removeComments": true,      /* Disable emitting comments. */
-		"noEmit": true                  /* Disable emitting files from a compilation. */,
-		"importHelpers": true,          /* Allow importing helper functions from tslib once per project, instead of including them per-file. */
-		"noEmitHelpers": true,          /* Disable generating custom helper functions like `__extends` in compiled output. */
-		"stripInternal": true,          /* Disable emitting declarations that have `@internal` in their JSDoc comments. */
+		"declaration": true     /* Generate .d.ts files from TypeScript and JavaScript files in your project. */,
+		"declarationMap": true  /* Create sourcemaps for d.ts files. */,
+		"sourceMap": true       /* Create source map files for emitted JavaScript files. */,
+		// "outFile": "./"      /* Specify a file that bundles all outputs into one JavaScript file. If `declaration` is true, also designates a file that bundles all .d.ts output. */,
+		"outDir": "./lib"       /* Specify an output folder for all emitted files. */,
+		"removeComments": true  /* Disable emitting comments. */,
+		"noEmit": false         /* Enable emitting files from a compilation. */,
+		"importHelpers": true   /* Allow importing helper functions from tslib once per project, instead of including them per-file. */,
+		"noEmitHelpers": true   /* Disable generating custom helper functions like `__extends` in compiled output. */,
+		"stripInternal": true   /* Disable emitting declarations that have `@internal` in their JSDoc comments. */,
 
 		/* Interop Constraints */
 		"isolatedModules": true               	 /* Ensure that each file can be safely transpiled without relying on other imports. */,
@@ -39,18 +36,17 @@
 
 		/* Type Checking */
 		"strict": true               /* Enable all strict type-checking options. */,
-		"strictNullChecks": true,    /* When type checking, take into account `null` and `undefined`. */
-		"strictBindCallApply": true, /* Check that the arguments for `bind`, `call`, and `apply` methods match the original function. */
+		"strictNullChecks": true     /* When type checking, take into account `null` and `undefined`. */,
+		"strictBindCallApply": true  /* Check that the arguments for `bind`, `call`, and `apply` methods match the original function. */,
 
 		/* Completeness */
-		"skipLibCheck": true /* Skip type checking all .d.ts files. */,
+		"skipLibCheck": true  /* Skip type checking all .d.ts files. */,
 
     "paths": {
-      "escf/*": ["./src/*"]
+      "escf/*": ["./*"]
     },
-    "declaration": true,
     "types": ["@cloudflare/workers-types/2023-07-01"],
   },
-  "include": ["src/**/*", "examples/**/*"],
-  "exclude": ["**/*.test.ts"]
+  "include": ["src/**/*"],
+  "exclude": ["examples/**/*", "**/*.test.ts"]
 }
