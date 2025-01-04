@@ -202,7 +202,7 @@ export const aggregate = Object.assign(
           def: AggregateEventDef<TAggregateState, TSchema>
         ) => AggregateEventDef<TAggregateState, TSchema>
       ) => TEventDefs
-    ) => factory((d) => d),
+    ): TEventDefs => factory((d) => d),
     commands: <
       TAggregateState extends AggregateStateDef,
       TEventDefs extends NamedAggregateEventDefs<TAggregateState>,
@@ -218,6 +218,6 @@ export const aggregate = Object.assign(
           def: AggregateCommandDef<TAggregateState, TEventDefs, TSchema>
         ) => AggregateCommandDef<TAggregateState, TEventDefs, TSchema>
       ) => TCommandDefs
-    ) => factory((d) => d),
+    ): TCommandDefs => factory((d) => d),
   }
 );
