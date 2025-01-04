@@ -7,6 +7,7 @@ import {
 import { Env } from "./env";
 import { EmptyProjection, ExtractProjectionMethods } from "./projection";
 import { EmptyProcess } from "./process";
+import { EventStoreInitializer } from "./store";
 
 export type SystemAggregateMap = Record<string, EmptyAggregate>;
 
@@ -68,6 +69,7 @@ export const system = Object.assign(
     aggregates: TAggregates;
     projections?: (env: Env) => TProjections;
     processes?: (env: Env) => TProcesses;
+    eventStore?: EventStoreInitializer<TAggregates>;
   }): System<TAggregates, TProjections, TProcesses> => {
     const getAggregateNamespace = <TAggregate extends keyof TAggregates>(
       env: Env,
@@ -104,10 +106,22 @@ export const system = Object.assign(
           ...(opts.processes ? Object.values(opts.processes(env)) : []),
         ];
 
+        const eventStore = opts.eventStore?.(env);
+
         const executeSync: ExecuteAggregateCommandMethod<
           TAggregates[TAggregateKey]
         > = async (type, payload) => {
-          const events = await stub.execute(type, payload);
+          const events = await stub.execute(type, payload)
+          
+          if (eventStore) {
+            for (const event of events) {
+              await eventStore.addEvent(
+                // @ts-expect-error
+                event as ExtractAggregateEvent<TAggregates[TAggregateKey]>
+              );
+            }
+          }
+
           await Promise.all(
             models.map(async (model) => {
               const instance = new model(env);
@@ -153,6 +167,9 @@ export const system = Object.assign(
     >(
       aggregates: TAggregates,
       factory: (env: Env) => TProcesses
-    ) => factory,
+    eventStore: <TAggregates extends SystemAggregateMap>(
+      aggregates: TAggregates,
+      factory: EventStoreInitializer<TAggregates>
+    ): EventStoreInitializer<TAggregates> => factory,
   }
 );
