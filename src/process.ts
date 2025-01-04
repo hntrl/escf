@@ -4,19 +4,37 @@ import { BindingsProvider, ExtractBindings } from "./bindings";
 import type { Env } from "./env";
 import { SystemAggregateMap, SystemEvent } from "./system";
 
-type ProcessSideEffect = (...args: any[]) => any;
-type ProcessSideEffects = Record<string, ProcessSideEffect>;
+export type ProcessSideEffect = (...args: any[]) => any | undefined;
+export type ProcessSideEffects = Record<string, ProcessSideEffect>;
+export type ProcessSideEffectsFactory<
+  TBindingsProvider extends BindingsProvider,
+  TEffects extends ProcessSideEffects
+> = (bindings: ExtractBindings<TBindingsProvider>) => TEffects;
 
-type ProcessEventHandler<
+export type ProcessEventHandler<
   TAggregates extends SystemAggregateMap,
   TEventType extends SystemEvent<TAggregates>["type"]
 > = (event: Extract<SystemEvent<TAggregates>, { type: TEventType }>) => void;
 
-type ProcessEventHandlers<TAggregates extends SystemAggregateMap> = Partial<{
-  [K in SystemEvent<TAggregates>["type"]]: ProcessEventHandler<TAggregates, K>;
-}>;
+export type ProcessEventHandlers<TAggregates extends SystemAggregateMap> =
+  Partial<{
+    [K in SystemEvent<TAggregates>["type"]]: ProcessEventHandler<
+      TAggregates,
+      K
+    >;
+  }>;
 
-abstract class ProcessBase<
+export type ProcessEventHandlerFactory<
+  TAggregates extends SystemAggregateMap,
+  TEventHandlers extends ProcessEventHandlers<TAggregates>,
+  TSideEffects extends ProcessSideEffects,
+  TBindingsProvider extends BindingsProvider
+> = (
+  effects: TSideEffects,
+  bindings: ExtractBindings<TBindingsProvider>
+) => TEventHandlers;
+
+export abstract class ProcessBase<
   TAggregates extends SystemAggregateMap,
   TEventHandlers extends ProcessEventHandlers<TAggregates>,
   TEffects extends ProcessSideEffects
@@ -55,37 +73,67 @@ export interface Process<
 
 export type EmptyProcess = Process<any, any, any>;
 
-export const process = <
-  TAggregates extends SystemAggregateMap,
-  TBindingsProvider extends BindingsProvider,
-  TEventHandlers extends ProcessEventHandlers<TAggregates>,
-  TEffects extends ProcessSideEffects
->(
-  aggregates: TAggregates,
-  bindingsProvider: TBindingsProvider,
-  opts: {
-    name: string;
-    eventHandlers: (
-      effects: TEffects,
-      bindings: ExtractBindings<TBindingsProvider>
-    ) => TEventHandlers;
-    effects: (bindings: ExtractBindings<TBindingsProvider>) => TEffects;
-  }
-): Process<TAggregates, TEventHandlers, TEffects> => {
-  class ProcessEntrypoint extends ProcessBase<
-    TAggregates,
-    ProcessEventHandlers<TAggregates>,
-    TEffects
-  > {
-    constructor(env: Env) {
-      const bindings = bindingsProvider(
-        env
-      ) as ExtractBindings<TBindingsProvider>;
-      const effects = opts.effects(bindings);
-      const eventHandlers = opts.eventHandlers(effects, bindings);
-      super(env, eventHandlers, effects);
+export const process = Object.assign(
+  <
+    TAggregates extends SystemAggregateMap,
+    TBindingsProvider extends BindingsProvider,
+    TEventHandlers extends ProcessEventHandlers<TAggregates>,
+    TEffects extends ProcessSideEffects
+  >(
+    aggregates: TAggregates,
+    bindingsProvider: TBindingsProvider,
+    opts: {
+      name: string;
+      eventHandlers: ProcessEventHandlerFactory<
+        TAggregates,
+        TEventHandlers,
+        TEffects,
+        TBindingsProvider
+      >;
+      effects: ProcessSideEffectsFactory<TBindingsProvider, TEffects>;
     }
+  ): Process<TAggregates, TEventHandlers, TEffects> => {
+    class ProcessEntrypoint extends ProcessBase<
+      TAggregates,
+      TEventHandlers,
+      TEffects
+    > {
+      constructor(env: Env) {
+        const bindings = bindingsProvider(
+          env
+        ) as ExtractBindings<TBindingsProvider>;
+        const effects = opts.effects(bindings);
+        const eventHandlers = opts.eventHandlers(effects, bindings);
+        super(env, eventHandlers, effects);
+      }
+    }
+    Object.defineProperty(ProcessEntrypoint, "name", { value: opts.name });
+    return ProcessEntrypoint as Process<TAggregates, TEventHandlers, TEffects>;
+  },
+  {
+    eventHandlers: <
+      TAggregates extends SystemAggregateMap,
+      TBindingsProvider extends BindingsProvider,
+      TEventHandlers extends ProcessEventHandlers<TAggregates>,
+      TEffects extends ProcessSideEffects,
+      TFactory = ProcessEventHandlerFactory<
+        TAggregates,
+        TEventHandlers,
+        TEffects,
+        TBindingsProvider
+      >
+    >(
+      aggregates: TAggregates,
+      bindingsProvider: TBindingsProvider,
+      factory: TFactory
+    ): TFactory => factory,
+    effects: <
+      TBindingsProvider extends BindingsProvider,
+      TEffects extends ProcessSideEffects,
+      TFactory = ProcessSideEffectsFactory<TBindingsProvider, TEffects>
+    >(
+      bindingsProvider: TBindingsProvider,
+      factory: TFactory
+    ): TFactory => factory,
   }
-  Object.defineProperty(ProcessEntrypoint, "name", { value: opts.name });
-  return ProcessEntrypoint as Process<TAggregates, TEventHandlers, TEffects>;
-};
+);
