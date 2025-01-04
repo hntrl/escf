@@ -29,7 +29,7 @@ export type SystemProjectionMap<TAggregates extends SystemAggregateMap> =
 export type SystemProcessMap<TAggregates extends SystemAggregateMap> =
   SystemModelMap<TAggregates, EmptyProcess>;
 
-type ExecuteAggregateCommandMethod<
+export type ExecuteAggregateCommandMethod<
   TAggregate extends EmptyAggregate,
   TAggregateCommand extends ExtractAggregateCommand<TAggregate> = ExtractAggregateCommand<TAggregate>
 > = <T extends TAggregateCommand["type"]>(
