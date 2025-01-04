@@ -2,22 +2,33 @@ import { BindingsProvider, ExtractBindings } from "./bindings";
 import type { Env } from "./env";
 import { SystemAggregateMap, SystemEvent } from "./system";
 
-type ProjectionEventHandler<
+export type ProjectionEventHandler<
   TAggregates extends SystemAggregateMap,
   TEventType extends SystemEvent<TAggregates>["type"]
-> = (event: Extract<SystemEvent<TAggregates>, { type: TEventType }>) => void;
+> = (event: SystemEvent<TAggregates> & { type: TEventType }) => void;
 
-type ProjectionEventHandlers<TAggregates extends SystemAggregateMap> = Partial<{
-  [K in SystemEvent<TAggregates>["type"]]: ProjectionEventHandler<
-    TAggregates,
-    K
-  >;
-}>;
+export type ProjectionEventHandlers<TAggregates extends SystemAggregateMap> =
+  Partial<{
+    [K in SystemEvent<TAggregates>["type"]]: ProjectionEventHandler<
+      TAggregates,
+      K
+    >;
+  }>;
 
-type ProjectionMethod = (...args: any[]) => any;
+export type ProjectionEventHandlerFactory<
+  TAggregates extends SystemAggregateMap,
+  TEventHandlers extends ProjectionEventHandlers<TAggregates>,
+  TBindingsProvider extends BindingsProvider
+> = (bindings: ExtractBindings<TBindingsProvider>) => TEventHandlers;
+
+export type ProjectionMethod = (...args: any[]) => any;
 export type ProjectionMethods = Record<string, ProjectionMethod>;
+export type ProjectionMethodFactory<
+  TBindingsProvider extends BindingsProvider,
+  TMethods extends ProjectionMethods
+> = (bindings: ExtractBindings<TBindingsProvider>) => TMethods;
 
-abstract class ProjectionBase<
+export abstract class ProjectionBase<
   TAggregates extends SystemAggregateMap,
   TEventHandlers extends ProjectionEventHandlers<TAggregates>,
   TMethods extends ProjectionMethods
@@ -64,40 +75,68 @@ export type ExtractProjectionMethods<T> = T extends Projection<
   ? TMethods
   : never;
 
-export const projection = <
-  TAggregates extends SystemAggregateMap,
-  TEventHandlers extends ProjectionEventHandlers<TAggregates>,
-  TMethods extends ProjectionMethods,
-  TBindingsProvider extends BindingsProvider
->(
-  aggregates: TAggregates,
-  bindingsProvider: TBindingsProvider,
-  opts: {
-    name: string;
-    eventHandlers: (
-      bindings: ExtractBindings<TBindingsProvider>
-    ) => TEventHandlers;
-    methods: (bindings: ExtractBindings<TBindingsProvider>) => TMethods;
-  }
-): Projection<TAggregates, TEventHandlers, TMethods> => {
-  class ProjectionEntrypoint extends ProjectionBase<
-    TAggregates,
-    TEventHandlers,
-    TMethods
-  > {
-    constructor(env: Env) {
-      const bindings = bindingsProvider(
-        env
-      ) as ExtractBindings<TBindingsProvider>;
-      const eventHandlers = opts.eventHandlers(bindings);
-      const methods = opts.methods(bindings);
-      super(env, eventHandlers, methods);
+export const projection = Object.assign(
+  <
+    TAggregates extends SystemAggregateMap,
+    TEventHandlers extends ProjectionEventHandlers<TAggregates>,
+    TMethods extends ProjectionMethods,
+    TBindingsProvider extends BindingsProvider
+  >(
+    aggregates: TAggregates,
+    bindingsProvider: TBindingsProvider,
+    opts: {
+      name: string;
+      eventHandlers: ProjectionEventHandlerFactory<
+        TAggregates,
+        TEventHandlers,
+        TBindingsProvider
+      >;
+      methods: ProjectionMethodFactory<TBindingsProvider, TMethods>;
     }
+  ): Projection<TAggregates, TEventHandlers, TMethods> => {
+    class ProjectionEntrypoint extends ProjectionBase<
+      TAggregates,
+      TEventHandlers,
+      TMethods
+    > {
+      constructor(env: Env) {
+        const bindings = bindingsProvider(
+          env
+        ) as ExtractBindings<TBindingsProvider>;
+        const eventHandlers = opts.eventHandlers(bindings);
+        const methods = opts.methods(bindings);
+        super(env, eventHandlers, methods);
+      }
+    }
+    Object.defineProperty(ProjectionEntrypoint, "name", { value: opts.name });
+    return ProjectionEntrypoint as Projection<
+      TAggregates,
+      TEventHandlers,
+      TMethods
+    >;
+  },
+  {
+    eventHandlers: <
+      TAggregates extends SystemAggregateMap,
+      TBindingsProvider extends BindingsProvider,
+      TEventHandlers extends ProjectionEventHandlers<TAggregates>,
+      TFactory = ProjectionEventHandlerFactory<
+        TAggregates,
+        TEventHandlers,
+        TBindingsProvider
+      >
+    >(
+      aggregates: TAggregates,
+      bindingsProvider: TBindingsProvider,
+      factory: TFactory
+    ): TFactory => factory,
+    methods: <
+      TBindingsProvider extends BindingsProvider,
+      TMethods extends ProjectionMethods,
+      TFactory = ProjectionMethodFactory<TBindingsProvider, TMethods>
+    >(
+      bindingsProvider: TBindingsProvider,
+      factory: TFactory
+    ): TFactory => factory,
   }
-  Object.defineProperty(ProjectionEntrypoint, "name", { value: opts.name });
-  return ProjectionEntrypoint as Projection<
-    TAggregates,
-    TEventHandlers,
-    TMethods
-  >;
-};
+);
