@@ -3,8 +3,7 @@ import { z } from "zod";
 
 import type { Env } from "./env";
 
-type InferType<T> = T extends z.ZodTypeAny ? z.infer<T> : never;
-type ArrayOrValue<T> = T | T[];
+export type PromiseOrValue<T> = Promise<T> | T;
 
 export type AggregateIdentifier = string;
 
@@ -49,13 +48,13 @@ type AggregateEvent<TEventDefs extends NamedAggregateEventDefs<z.ZodTypeAny>> =
 type AggregateCommandDef<
   TAggregateState extends z.ZodTypeAny,
   TAggregateEventDefs extends NamedAggregateEventDefs<TAggregateState>,
-  TSchema extends z.ZodTypeAny
+  TSchema extends z.ZodTypeAny = z.ZodUnknown
 > = {
   schema: TSchema;
   handler: (
-    payload: InferType<TSchema>,
+    payload: TSchema extends z.ZodUnknown ? unknown : InferType<TSchema>,
     state: InferType<TAggregateState> | null
-  ) => ArrayOrValue<AggregateEventInput<TAggregateEventDefs>>;
+  ) => PromiseOrValue<ArrayOrValue<AggregateEventInput<TAggregateEventDefs>>>;
 };
 
 type NamedAggregateCommandDefs<
@@ -89,6 +88,7 @@ abstract class AggregateBase<
     readonly ctx: DurableObjectState,
     readonly env: Env,
     readonly name: string,
+    readonly stateSchema: TState,
     readonly eventDefinitions: TEventDefs,
     readonly commandDefinitions: TCommandDefs
   ) {
@@ -106,12 +106,23 @@ abstract class AggregateBase<
     const command = this.commandDefinitions[type];
     if (!command) throw new Error(`Command ${String(type)} not found`);
 
-    payload = command.schema.parse(payload);
+    const validation = command.schema.safeParse(payload);
+    if (!validation.success) {
+      console.error(validation.error);
+      throw validation.error;
+    }
 
-    const eventOrEvents = await command.handler(payload, this.state);
-    const events = Array.isArray(eventOrEvents)
+    const eventOrEvents = await command.handler(validation.data, this.state);
+    const eventInputs = Array.isArray(eventOrEvents)
       ? eventOrEvents
       : [eventOrEvents];
+
+    const events: AggregateEvent<TEventDefs>[] = eventInputs.map((event) => ({
+      timestamp: Date.now(),
+      aggregate: this.name,
+      aggregateId: this.ctx.id.toString(),
+      ...event,
+    }));
 
     for (const event of events) {
       const eventDefinition = this.eventDefinitions[event.type];
@@ -119,19 +130,22 @@ abstract class AggregateBase<
       // TODO: {} as InferType<TState> is a hack to get this shipped. we need
       // to handle events from an uninitialized state, but introducing null to
       // the type is a breaking change
-      this.state = eventDefinition.reducer(
-        event.payload,
-        this.state ?? ({} as InferType<TState>)
+      const nextState = eventDefinition.reducer({
+        payload: event.payload,
+        state: this.state ?? ({} as InferType<TState>),
+        timestamp: event.timestamp,
+      });
+      const validation = this.stateSchema.safeParse(nextState);
+      if (!validation.success) {
+        console.error(validation.error);
+        throw validation.error;
+      }
+      this.state = validation.data;
       );
     }
     await this.ctx.storage.put("state", this.state);
 
-    return events.map((event) => ({
-      timestamp: Date.now(),
-      aggregate: this.name,
-      aggregateId: this.ctx.id.toString(),
-      ...event,
-    }));
+    return events;
   }
 }
 
@@ -184,7 +198,7 @@ export const aggregate = Object.assign(
       TCommandDefs
     > {
       constructor(ctx: DurableObjectState, env: Env) {
-        super(ctx, env, opts.name, opts.events, opts.commands);
+        super(ctx, env, opts.name, opts.state, opts.events, opts.commands);
       }
     }
     Object.defineProperty(AggregateEntrypoint, "name", { value: opts.name });
