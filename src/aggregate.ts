@@ -3,11 +3,14 @@ import { z } from "zod";
 
 import type { Env } from "./env";
 
+export type InferType<T> = T extends z.ZodTypeAny ? z.infer<T> : never;
+export type ArrayOrValue<T> = T | T[];
 export type PromiseOrValue<T> = Promise<T> | T;
 
 export type AggregateIdentifier = string;
 
-type AggregateStateDef<TSchema extends z.ZodTypeAny = z.ZodTypeAny> = TSchema;
+export type AggregateStateDef<TSchema extends z.ZodTypeAny = z.ZodTypeAny> =
+  TSchema;
 
 // TODO: events & commands that are not built using their respective factories should have unknown schema types
 // e.x. this should be the default:
@@ -27,10 +30,10 @@ export type AggregateEventDef<
   }) => InferType<TAggregateState>;
 };
 
-type NamedAggregateEventDefs<TAggregateState extends AggregateStateDef> =
+export type NamedAggregateEventDefs<TAggregateState extends AggregateStateDef> =
   Record<string, AggregateEventDef<TAggregateState, z.ZodTypeAny>>;
 
-type AggregateEventInput<
+export type AggregateEventInput<
   TEventDefs extends NamedAggregateEventDefs<z.ZodTypeAny>
 > = {
   [K in keyof TEventDefs]: {
@@ -39,14 +42,15 @@ type AggregateEventInput<
   };
 }[keyof TEventDefs];
 
-type AggregateEvent<TEventDefs extends NamedAggregateEventDefs<z.ZodTypeAny>> =
-  AggregateEventInput<TEventDefs> & {
-    timestamp: number;
-    aggregate: string;
-    aggregateId: string;
-  };
+export type AggregateEvent<
+  TEventDefs extends NamedAggregateEventDefs<z.ZodTypeAny>
+> = AggregateEventInput<TEventDefs> & {
+  timestamp: number;
+  aggregate: string;
+  aggregateId: string;
+};
 
-type AggregateCommandDef<
+export type AggregateCommandDef<
   TAggregateState extends z.ZodTypeAny,
   TAggregateEventDefs extends NamedAggregateEventDefs<TAggregateState>,
   TSchema extends z.ZodTypeAny = z.ZodUnknown
@@ -58,7 +62,7 @@ type AggregateCommandDef<
   ) => PromiseOrValue<ArrayOrValue<AggregateEventInput<TAggregateEventDefs>>>;
 };
 
-type NamedAggregateCommandDefs<
+export type NamedAggregateCommandDefs<
   TAggregateState extends AggregateStateDef,
   TAggregateEventDefs extends NamedAggregateEventDefs<TAggregateState>
 > = Record<
@@ -66,7 +70,7 @@ type NamedAggregateCommandDefs<
   AggregateCommandDef<TAggregateState, TAggregateEventDefs, z.ZodTypeAny>
 >;
 
-type AggregateCommand<
+export type AggregateCommand<
   TCommandDefs extends NamedAggregateCommandDefs<
     z.ZodTypeAny,
     NamedAggregateEventDefs<z.ZodTypeAny>
@@ -78,7 +82,7 @@ type AggregateCommand<
   };
 }[keyof TCommandDefs];
 
-abstract class AggregateBase<
+export abstract class AggregateBase<
   TState extends AggregateStateDef,
   TEventDefs extends NamedAggregateEventDefs<TState>,
   TCommandDefs extends NamedAggregateCommandDefs<TState, TEventDefs>
