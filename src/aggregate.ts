@@ -182,6 +182,11 @@ export type ExtractAggregateCommand<T> = T extends Aggregate<
     : never
   : never;
 
+export type AggregateCommandPayload<
+  T extends EmptyAggregate,
+  TCommandType extends ExtractAggregateCommand<T>["type"]
+> = Extract<ExtractAggregateCommand<T>, { type: TCommandType }>["payload"];
+
 export const aggregate = Object.assign(
   <
     TState extends AggregateStateDef,
