@@ -1,5 +1,3 @@
-import { WorkerEntrypoint } from "cloudflare:workers";
-
 import { BindingsProvider, ExtractBindings } from "./bindings";
 import type { Env } from "./env";
 import { SystemAggregateMap, SystemEvent } from "./system";
