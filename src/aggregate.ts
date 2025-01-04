@@ -15,15 +15,16 @@ type AggregateStateDef<TSchema extends z.ZodTypeAny = z.ZodTypeAny> = TSchema;
 //      this should be the desired behavior:
 //      UserCreated: define({ schema: z.object(...), reducer: (event: TSchema, state: TState) => TState })
 
-type AggregateEventDef<
+export type AggregateEventDef<
   TAggregateState extends z.ZodTypeAny,
-  TSchema extends z.ZodTypeAny
+  TSchema extends z.ZodTypeAny = z.ZodUnknown
 > = {
   schema: TSchema;
-  reducer: (
-    event: InferType<TSchema>,
-    state: InferType<TAggregateState>
-  ) => InferType<TAggregateState>;
+  reducer: (params: {
+    payload: TSchema extends z.ZodUnknown ? unknown : InferType<TSchema>;
+    state: InferType<TAggregateState>;
+    timestamp: number;
+  }) => InferType<TAggregateState>;
 };
 
 type NamedAggregateEventDefs<TAggregateState extends AggregateStateDef> =
