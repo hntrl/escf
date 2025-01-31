@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "cb753e7e-6ada-42e7-943e-2e939f7b5fe8",
+  "id": "a3023d06-ba70-4136-b799-91685b1c2113",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "SessionService_sessions": {
@@ -95,13 +95,6 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true,
-          "autoincrement": false
-        },
-        "emailVerificationToken": {
-          "name": "emailVerificationToken",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
           "autoincrement": false
         }
       },

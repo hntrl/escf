@@ -7,5 +7,4 @@ export const users = sqliteTable("users", {
   createdAt: integer("createdAt").notNull(),
   name: text("name").notNull(),
   email: text("email").notNull().unique(),
-  emailVerificationToken: text("emailVerificationToken"),
 });

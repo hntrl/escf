@@ -14,8 +14,7 @@ CREATE TABLE `UserService_users` (
 	`userId` text PRIMARY KEY NOT NULL,
 	`createdAt` integer NOT NULL,
 	`name` text NOT NULL,
-	`email` text NOT NULL,
-	`emailVerificationToken` text
+	`email` text NOT NULL
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `UserService_users_email_unique` ON `UserService_users` (`email`);
