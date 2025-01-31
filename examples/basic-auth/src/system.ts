@@ -1,4 +1,4 @@
-import { ESCF } from "escf/index";
+import { ESCF } from "escf/src";
 import { UserAggregate } from "./aggregates/user";
 import { SessionService } from "./projections/sessions";
 import { UserService } from "./projections/users";

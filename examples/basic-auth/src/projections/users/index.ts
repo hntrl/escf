@@ -1,15 +1,15 @@
 import { RpcTarget } from "cloudflare:workers";
 import { eq } from "drizzle-orm";
 
-import { ESCF, RequestError } from "escf/index";
-import { DrizzleD1Storage } from "escf/bindings/d1/DrizzleD1Storage";
+import { ESCF, RequestError } from "escf/src";
+import { drizzle } from "drizzle-orm/d1";
 import { User } from "../../aggregates/user";
 import { aggregates, system } from "../../system";
 import { Session } from "../sessions";
 import { users } from "./schema";
 
 const bindings = ESCF.bindings((env: Env) => ({
-  db: new DrizzleD1Storage(env.DATABASE, { users }),
+  db: drizzle(env.DATABASE, { schema }),
   getSession: (sessionId: string) =>
     system.getProjection(env, "sessions").getSession(sessionId),
   env,

@@ -1,7 +1,7 @@
 import { nanoid } from "nanoid";
 import { z } from "zod";
 
-import { ESCF, RequestError } from "escf/index";
+import { ESCF, RequestError } from "escf/src";
 
 export const userSchema = z.object({
   name: z.string(),

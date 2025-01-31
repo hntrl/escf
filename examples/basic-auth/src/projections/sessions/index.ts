@@ -3,15 +3,15 @@ import { eq, InferSelectModel } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { createDate } from "oslo";
 
-import { ESCF, RequestError } from "escf/index";
-import { DrizzleD1Storage } from "escf/bindings/d1/DrizzleD1Storage";
+import { ESCF, RequestError } from "escf/src";
+import { drizzle } from "drizzle-orm/d1";
+import * as schema from "./schema";
 import { User } from "../../aggregates/user";
 import { aggregates, system } from "../../system";
-import { sessionExpiresIn } from "./cookie";
-import { sessions, users } from "./schema";
+const { users, sessions } = schema;
 
 const bindings = ESCF.bindings((env: Env) => ({
-  db: new DrizzleD1Storage(env.DATABASE, { users, sessions }),
+  db: drizzle(env.DATABASE, { schema }),
   env,
 }));
 
