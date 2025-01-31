@@ -1,20 +1,31 @@
 import { Hono } from "hono/quick";
-import { parseCookies } from "oslo/cookie";
 import { z } from "zod";
 
-import { sessionCookieController } from "../projections/sessions/cookie";
 import { zValidator } from "@hono/zod-validator";
 
 import { system } from "../system";
 
+import cookie from "cookie";
+
 type Variables = { sessionToken: string };
+
+const SESSION_KEY = "__session";
+
+function serializeSessionCookie(sessionId: string) {
+  return cookie.serialize(SESSION_KEY, sessionId, {
+    httpOnly: true,
+    secure: true,
+    sameSite: "lax",
+    path: "/",
+  });
+}
 
 export const userRoutes = new Hono<{ Variables: Variables }>({
   strict: false,
 })
   .use(async (c, next) => {
-    const cookies = parseCookies(c.req.header("Cookie") ?? "");
-    c.set("sessionToken", cookies.get("auth_session") ?? "");
+    const cookies = cookie.parse(c.req.header("Cookie") ?? "");
+    c.set("sessionToken", cookies[SESSION_KEY] ?? "");
     await next();
   })
   .get("/", async (c) => {
@@ -22,10 +33,7 @@ export const userRoutes = new Hono<{ Variables: Variables }>({
       .getProjection(c.env, "sessions")
       .getSession(c.get("sessionToken"));
     if (session && session.fresh) {
-      const sessionValue = sessionCookieController.createCookie(
-        session.sessionId
-      );
-      c.header("Set-Cookie", sessionValue.serialize());
+      c.header("Set-Cookie", serializeSessionCookie(session.sessionId));
     }
     return c.json({ user, session });
   })
@@ -43,10 +51,7 @@ export const userRoutes = new Hono<{ Variables: Variables }>({
       const { session } = await system
         .getProjection(c.env, "sessions")
         .authenticate(email, password);
-      c.header(
-        "Set-Cookie",
-        sessionCookieController.createCookie(session.sessionId).serialize()
-      );
+      c.header("Set-Cookie", serializeSessionCookie(session.sessionId));
       return c.json({ session });
     }
   )
@@ -54,10 +59,7 @@ export const userRoutes = new Hono<{ Variables: Variables }>({
     await system
       .getProjection(c.env, "sessions")
       .invalidateSession(c.get("sessionToken"));
-    c.header(
-      "Set-Cookie",
-      sessionCookieController.createBlankCookie().serialize()
-    );
+    c.header("Set-Cookie", serializeSessionCookie(""));
     return c.body(null, 204);
   })
   .post(
@@ -65,7 +67,6 @@ export const userRoutes = new Hono<{ Variables: Variables }>({
     zValidator(
       "json",
       z.object({
-        avatar: z.string().nullable(),
         name: z.string(),
         email: z.string(),
         password: z.string(),
@@ -76,10 +77,7 @@ export const userRoutes = new Hono<{ Variables: Variables }>({
       const { session } = await system
         .getProjection(c.env, "sessions")
         .register(input);
-      c.header(
-        "Set-Cookie",
-        sessionCookieController.createCookie(session.sessionId).serialize()
-      );
+      c.header("Set-Cookie", serializeSessionCookie(session.sessionId));
       return c.json({ session });
     }
   );

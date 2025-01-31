@@ -1,19 +1,24 @@
 import { RpcTarget } from "cloudflare:workers";
 import { eq, InferSelectModel } from "drizzle-orm";
 import { nanoid } from "nanoid";
-import { createDate } from "oslo";
 
 import { ESCF, RequestError } from "escf/src";
 import { drizzle } from "drizzle-orm/d1";
 import * as schema from "./schema";
 import { User } from "../../aggregates/user";
 import { aggregates, system } from "../../system";
+import { Duration, isWithinDuration } from "../../utils/date";
+
 const { users, sessions } = schema;
+
+const sessionDuration = new Duration(30, "d");
 
 const bindings = ESCF.bindings((env: Env) => ({
   db: drizzle(env.DATABASE, { schema }),
   env,
 }));
+
+type SessionUser = InferSelectModel<typeof users> & {};
 
 export const SessionService = ESCF.projection(aggregates, bindings, {
   name: "SessionService",
@@ -34,16 +39,21 @@ export const SessionService = ESCF.projection(aggregates, bindings, {
     },
   }),
   methods: ({ db, env }) => {
-    const createSession = async (
-      userObject: InferSelectModel<typeof users>
-    ) => {
+    const createSession = async (userObject: SessionUser) => {
       const session = {
         sessionId: nanoid(),
         userId: userObject.userId,
-        expiresAt: createDate(sessionExpiresIn),
+        expiresAt: Date.now() + sessionDuration.milliseconds(),
       };
       await db.insert(sessions).values(session);
       return new Session(userObject, session, true);
+    };
+    const getSessionUser = async (userId: string) => {
+      return await db
+        .select()
+        .from(users)
+        .where(eq(users.userId, userId))
+        .get();
     };
     const usersProjection = system.getProjection(env, "users");
     return {
@@ -69,13 +79,20 @@ export const SessionService = ESCF.projection(aggregates, bindings, {
           .from(sessions)
           .where(eq(sessions.sessionId, sessionId))
           .get();
-        if (!session) throw new RequestError("Invalid session");
-        const user = await db
-          .select()
-          .from(users)
-          .where(eq(users.userId, session.userId))
-          .get();
-        if (!user) throw new RequestError("Invalid session");
+        if (!session) throw new RequestError("Invalid session", 419);
+        if (session.expiresAt <= new Date().getTime()) {
+          await db.delete(sessions).where(eq(sessions.sessionId, sessionId));
+          throw new RequestError("Invalid session", 419);
+        }
+        if (isWithinDuration(session.expiresAt, sessionDuration)) {
+          session.expiresAt = Date.now() + sessionDuration.milliseconds();
+          await db
+            .update(sessions)
+            .set({ expiresAt: session.expiresAt })
+            .where(eq(sessions.sessionId, sessionId));
+        }
+        const user = await getSessionUser(session.userId);
+        if (!user) throw new RequestError("Invalid session", 419);
         return new Session(user, session, false);
       },
       async invalidateSession(sessionId: string) {

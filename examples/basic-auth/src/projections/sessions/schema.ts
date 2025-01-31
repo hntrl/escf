@@ -6,7 +6,7 @@ const sqliteTable = sqliteTableCreator((name) => `SessionService_${name}`);
 export const sessions = sqliteTable("sessions", {
   sessionId: text("sessionId").primaryKey(),
   userId: text("userId").notNull(),
-  expiresAt: integer("expiresAt", { mode: "timestamp_ms" }).notNull(),
+  expiresAt: integer("expiresAt").notNull(),
 });
 
 export const users = sqliteTable("users", {
