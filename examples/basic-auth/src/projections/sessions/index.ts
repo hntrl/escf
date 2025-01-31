@@ -25,6 +25,9 @@ export const SessionService = ESCF.projection(aggregates, bindings, {
         email: payload.email,
       });
     },
+    async UserUpdated({ aggregateId, payload }) {
+      await db.update(users).set(payload).where(eq(users.userId, aggregateId));
+    },
     async UserDeleted({ aggregateId }) {
       await db.delete(users).where(eq(users.userId, aggregateId));
       await db.delete(sessions).where(eq(sessions.userId, aggregateId));
