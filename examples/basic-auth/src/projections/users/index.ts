@@ -45,12 +45,26 @@ export const UserService = ESCF.projection(aggregates, bindings, {
       if (user) throw new RequestError("Email already in use");
     };
     return {
+      /**
+       * Registers a new user with the provided email, password, and user details
+       * @param input - Object containing password and user creation details
+       * @returns Promise resolving to the created user ID
+       * @throws {RequestError} If email is already in use
+       */
       async register(input: User & { password: string }) {
         await ensureUniqueEmail(input.email);
         return await system
           .getAggregate(env, "user")
           .executeSync("CreateUser", input);
       },
+
+      /**
+       * Authenticates a user with email and password
+       * @param email - User's email address
+       * @param password - User's password
+       * @returns Promise resolving to the user ID if authentication successful
+       * @throws {RequestError} If email/password combination is invalid
+       */
       async authenticate(email: string, password: string) {
         const user = await db
           .select()
