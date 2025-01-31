@@ -6,7 +6,10 @@ import { drizzle } from "drizzle-orm/d1";
 import { User } from "../../aggregates/user";
 import { aggregates, system } from "../../system";
 import { Session } from "../sessions";
-import { users } from "./schema";
+
+import * as schema from "./schema";
+
+const { users } = schema;
 
 const bindings = ESCF.bindings((env: Env) => ({
   db: drizzle(env.DATABASE, { schema }),
