@@ -37,6 +37,29 @@ export const userRoutes = new Hono<{ Variables: Variables }>({
     }
     return c.json({ user, session });
   })
+  .put(
+    "/",
+    zValidator(
+      "json",
+      z.object({
+        name: z.string().optional(),
+        email: z.string().optional(),
+      })
+    ),
+    async (c) => {
+      const user = c.req.valid("json");
+      await system
+        .getProjection(c.env, "users")
+        .update(user, c.get("sessionToken"));
+      return c.json(user);
+    }
+  )
+  .delete("/", async (c) => {
+    await system.getProjection(c.env, "users").delete(c.get("sessionToken"));
+    c.header("Set-Cookie", serializeSessionCookie(""));
+    return c.body(null, 204);
+  })
+
   .post(
     "/login",
     zValidator(

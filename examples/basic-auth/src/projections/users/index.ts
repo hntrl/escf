@@ -80,9 +80,31 @@ export const UserService = ESCF.projection(aggregates, bindings, {
           });
         return user.userId;
       },
-      async userSession(sessionId: string) {
-        const session = await getSession(sessionId);
-        return new UserSession(env, session, ensureUniqueEmail);
+
+      /**
+       * Updates a user's profile information
+       * @param input - Object containing fields to update
+       * @param sessionId - Current session ID
+       * @returns Promise resolving to the updated user ID
+       * @throws {RequestError} If trying to change to an email that's already in use
+       */
+      async update(input: Partial<User>, sessionId: string) {
+        const session = await validateSession(sessionId);
+        return await system
+          .getAggregate(env, "user", session.user.userId)
+          .executeSync("UpdateUser", input);
+      },
+
+      /**
+       * Deletes a user's account
+       * @param sessionId - Current session ID
+       * @returns Promise resolving to the deleted user ID
+       */
+      async delete(sessionId: string) {
+        const session = await validateSession(sessionId);
+        return await system
+          .getAggregate(env, "user", session.user.userId)
+          .executeSync("DeleteUser", null);
       },
     };
   },
@@ -98,22 +120,5 @@ export class UserSession extends RpcTarget {
     this.env = env;
     this.session = session;
     this.ensureUniqueEmail = ensureUniqueEmail;
-  }
-
-  async update(input: User) {
-    const user = await this.session.user;
-    if (user.email !== input.email) {
-      await this.ensureUniqueEmail(input.email);
-    }
-    system
-      .getAggregate(this.env, "user", user.userId)
-      .executeSync("UpdateUser", input);
-  }
-
-  async delete() {
-    const user = await this.session.user;
-    system
-      .getAggregate(this.env, "user", user.userId)
-      .executeSync("DeleteUser", null);
   }
 }
