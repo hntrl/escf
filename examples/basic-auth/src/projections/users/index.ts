@@ -10,8 +10,8 @@ import { users } from "./schema";
 
 const bindings = ESCF.bindings((env: Env) => ({
   db: drizzle(env.DATABASE, { schema }),
-  getSession: (sessionId: string) =>
-    system.getProjection(env, "sessions").getSession(sessionId),
+  validateSession: (sessionId: string) =>
+    system.getProjection(env, "sessions").validateSession(sessionId),
   env,
 }));
 
@@ -32,7 +32,7 @@ export const UserService = ESCF.projection(aggregates, bindings, {
       return db.delete(users).where(eq(users.userId, aggregateId));
     },
   }),
-  methods: ({ db, getSession, env }) => {
+  methods: ({ db, validateSession, env }) => {
     const ensureUniqueEmail = async (email: string) => {
       const user = await db
         .select()

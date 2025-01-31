@@ -73,7 +73,7 @@ export const SessionService = ESCF.projection(aggregates, bindings, {
         const session = await createSession(user);
         return session;
       },
-      async getSession(sessionId: string) {
+      async validateSession(sessionId: string) {
         const session = await db
           .select()
           .from(sessions)

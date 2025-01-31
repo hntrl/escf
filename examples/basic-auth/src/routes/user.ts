@@ -31,7 +31,7 @@ export const userRoutes = new Hono<{ Variables: Variables }>({
   .get("/", async (c) => {
     const { user, session } = await system
       .getProjection(c.env, "sessions")
-      .getSession(c.get("sessionToken"));
+      .validateSession(c.get("sessionToken"));
     if (session && session.fresh) {
       c.header("Set-Cookie", serializeSessionCookie(session.sessionId));
     }
