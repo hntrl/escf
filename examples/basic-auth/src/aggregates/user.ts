@@ -1,4 +1,3 @@
-import { nanoid } from "nanoid";
 import { z } from "zod";
 
 import { ESCF, RequestError } from "escf/src";
@@ -21,25 +20,25 @@ const state = ESCF.aggregate.state(
 const events = ESCF.aggregate.events(state, (define) => ({
   UserCreated: define({
     schema: userSchema,
-    reducer(event, state) {
-      return { ...state, ...event, deleted: false };
+    reducer({ payload, state }) {
+      return { ...state, ...payload, deleted: false };
     },
   }),
   UserUpdated: define({
     schema: userSchema,
-    reducer(event, state) {
-      return { ...state, ...event };
+    reducer({ payload, state }) {
+      return { ...state, ...payload };
     },
   }),
   UserDeleted: define({
     schema: z.null(),
-    reducer(_, state) {
+    reducer({ state }) {
       return { ...state, deleted: true };
     },
   }),
   UserAuthenticated: define({
     schema: z.null(),
-    reducer(_, state) {
+    reducer({ state }) {
       return state;
     },
   }),
