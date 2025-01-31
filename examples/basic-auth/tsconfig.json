@@ -1,0 +1,14 @@
+{
+	"extends": "../../tsconfig.json",
+	"compilerOptions": {
+		"tsBuildInfoFile": "./node_modules/.tmp/tsconfig.basic-auth.tsbuildinfo",
+		"outDir": "./lib"
+	},
+	"include": [
+		"src/**/*",
+		"worker-configuration.d.ts"
+	],
+	"exclude": [
+		"**/*.test.ts"
+	],
+}
