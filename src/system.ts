@@ -111,8 +111,11 @@ export const system = Object.assign(
         const executeSync: ExecuteAggregateCommandMethod<
           TAggregates[TAggregateKey]
         > = async (type, payload) => {
-          const events = await stub.execute(type, payload)
-          
+          const events = await stub.execute(type, payload).catch((err) => {
+            console.error(err);
+            throw err;
+          });
+
           if (eventStore) {
             for (const event of events) {
               await eventStore.addEvent(
