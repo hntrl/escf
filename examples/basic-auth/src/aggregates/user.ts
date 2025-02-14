@@ -47,7 +47,7 @@ const events = ESCF.aggregate.events(state, (define) => ({
 const commands = ESCF.aggregate.commands(state, events, (define) => ({
   CreateUser: define({
     schema: z.object({ password: z.string() }).and(userSchema),
-    handler(payload, state) {
+    handler({ payload, state }) {
       if (state !== null) throw new RequestError("Already created");
       return {
         type: "UserCreated",
@@ -61,7 +61,7 @@ const commands = ESCF.aggregate.commands(state, events, (define) => ({
   }),
   UpdateUser: define({
     schema: userSchema.partial(),
-    handler(payload, state) {
+    handler({ payload, state }) {
       if (state === null) throw new RequestError("Not found");
       if (state.deleted) throw new RequestError("User Deleted");
 
@@ -73,7 +73,7 @@ const commands = ESCF.aggregate.commands(state, events, (define) => ({
   }),
   DeleteUser: define({
     schema: z.null(),
-    handler(_, state) {
+    handler({ state }) {
       if (state === null) throw new RequestError("Not found");
       if (state.deleted) throw new RequestError("User Deleted");
 
