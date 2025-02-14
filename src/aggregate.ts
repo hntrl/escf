@@ -23,11 +23,14 @@ export type AggregateEventDef<
   TSchema extends z.ZodTypeAny = z.ZodUnknown
 > = {
   schema: TSchema;
-  reducer: (params: {
-    payload: TSchema extends z.ZodUnknown ? unknown : InferType<TSchema>;
-    state: InferType<TAggregateState>;
-    timestamp: number;
-  }) => InferType<TAggregateState>;
+  reducer: (
+    params: {
+      payload: TSchema extends z.ZodUnknown ? unknown : InferType<TSchema>;
+      state: InferType<TAggregateState>;
+      timestamp: number;
+    },
+    env: Env
+  ) => InferType<TAggregateState>;
 };
 
 export type NamedAggregateEventDefs<TAggregateState extends AggregateStateDef> =
@@ -57,8 +60,11 @@ export type AggregateCommandDef<
 > = {
   schema: TSchema;
   handler: (
-    payload: TSchema extends z.ZodUnknown ? unknown : InferType<TSchema>,
-    state: InferType<TAggregateState> | null
+    params: {
+      payload: TSchema extends z.ZodUnknown ? unknown : InferType<TSchema>;
+      state: InferType<TAggregateState> | null;
+    },
+    env: Env
   ) => PromiseOrValue<ArrayOrValue<AggregateEventInput<TAggregateEventDefs>>>;
 };
 
@@ -117,7 +123,13 @@ export abstract class AggregateBase<
       throw validation.error;
     }
 
-    const eventOrEvents = await command.handler(validation.data, this.state);
+    const eventOrEvents = await command.handler(
+      {
+        payload: validation.data,
+        state: this.state,
+      },
+      this.env
+    );
     const eventInputs = Array.isArray(eventOrEvents)
       ? eventOrEvents
       : [eventOrEvents];
@@ -135,18 +147,20 @@ export abstract class AggregateBase<
       // TODO: {} as InferType<TState> is a hack to get this shipped. we need
       // to handle events from an uninitialized state, but introducing null to
       // the type is a breaking change
-      const nextState = eventDefinition.reducer({
-        payload: event.payload,
-        state: this.state ?? ({} as InferType<TState>),
-        timestamp: event.timestamp,
-      });
+      const nextState = eventDefinition.reducer(
+        {
+          payload: event.payload,
+          state: this.state ?? ({} as InferType<TState>),
+          timestamp: event.timestamp,
+        },
+        this.env
+      );
       const validation = this.stateSchema.safeParse(nextState);
       if (!validation.success) {
         console.error(validation.error);
         throw validation.error;
       }
       this.state = validation.data;
-      );
     }
     await this.ctx.storage.put("state", this.state);
 
