@@ -1,15 +1,22 @@
 import {
+  AggregateGetter,
   AggregateIdentifier,
   EmptyAggregate,
+  ExtractAggregate,
   ExtractAggregateCommand,
   ExtractAggregateEvent,
+  AggregateCtor,
 } from "./aggregate";
 import { Env } from "./env";
 import { EmptyProjection, ExtractProjectionMethods } from "./projection";
 import { EmptyProcess } from "./process";
 import { EventStoreInitializer } from "./store";
+import { iife } from "./utils";
 
-export type SystemAggregateMap = Record<string, EmptyAggregate>;
+export type SystemAggregateMap = Record<
+  string,
+  AggregateGetter | AggregateCtor
+>;
 
 export type SystemEvent<TAggregates extends SystemAggregateMap> =
   ExtractAggregateEvent<TAggregates[keyof TAggregates]>;
@@ -32,13 +39,13 @@ export type SystemProcessMap<TAggregates extends SystemAggregateMap> =
 export type ExecuteAggregateCommandMethod<
   TAggregate extends EmptyAggregate,
   TAggregateCommand extends ExtractAggregateCommand<TAggregate> = ExtractAggregateCommand<TAggregate>
-> = <T extends TAggregateCommand["type"]>(
+> = <T extends ExtractAggregateCommand<TAggregate>["type"]>(
   type: T,
   payload: Extract<TAggregateCommand, { type: T }>["payload"]
 ) => Promise<AggregateIdentifier>;
 
-export interface AggregateInterface<TAggregate extends EmptyAggregate> {
-  executeSync: ExecuteAggregateCommandMethod<TAggregate>;
+export interface AggregateInterface<TGetter extends AggregateGetter> {
+  executeSync: ExecuteAggregateCommandMethod<ExtractAggregate<TGetter>>;
 }
 
 export type ProjectionInterface<TProjection extends EmptyProjection> =
@@ -71,35 +78,24 @@ export const system = Object.assign(
     processes?: (env: Env) => TProcesses;
     eventStore?: EventStoreInitializer<TAggregates>;
   }): System<TAggregates, TProjections, TProcesses> => {
-    const getAggregateNamespace = <TAggregate extends keyof TAggregates>(
-      env: Env,
-      name: TAggregate
-    ): DurableObjectNamespace<TAggregates[TAggregate]> => {
-      const namespace = env[name];
-      if (!namespace) {
-        throw new Error(
-          `Could not find namespace '${String(
-            name
-          )}' from the env, ensure it's configured correctly`
-        );
-      }
-      return namespace;
-    };
-
     return {
       getAggregate: <TAggregateKey extends keyof TAggregates>(
         env: Env,
         name: TAggregateKey,
         aggregateId?: AggregateIdentifier
       ): AggregateInterface<TAggregates[TAggregateKey]> => {
-        const namespace = getAggregateNamespace(
-          env,
-          opts.aggregates[name].name
-        );
-        const castedAggregateId =
-          aggregateId ?? namespace.newUniqueId().toString();
-        const stubId = namespace.idFromString(castedAggregateId);
-        const stub = namespace.get(stubId);
+        const instance = iife(() => {
+          const aggDef = opts.aggregates[name];
+          if (
+            "_getAggregate" in aggDef &&
+            typeof aggDef._getAggregate === "function"
+          ) {
+            return aggDef._getAggregate(env, aggregateId) as ExtractAggregate<
+              typeof aggDef
+            >;
+          }
+          throw new Error(`Invalid aggregate signature for '${String(name)}'`);
+        });
 
         const models = [
           ...(opts.projections ? Object.values(opts.projections(env)) : []),
@@ -109,17 +105,13 @@ export const system = Object.assign(
         const eventStore = opts.eventStore?.(env);
 
         const executeSync: ExecuteAggregateCommandMethod<
-          TAggregates[TAggregateKey]
+          ExtractAggregate<TAggregates[TAggregateKey]>
         > = async (type, payload) => {
-          const events = await stub.execute(type, payload).catch((err) => {
-            console.error(err);
-            throw err;
-          });
+          const events = await instance._receiveCommand(type, payload);
 
           if (eventStore) {
             for (const event of events) {
               await eventStore.addEvent(
-                // @ts-expect-error
                 event as ExtractAggregateEvent<TAggregates[TAggregateKey]>
               );
             }
@@ -133,9 +125,8 @@ export const system = Object.assign(
               }
             })
           );
-          return castedAggregateId;
+          return instance.aggregateId;
         };
-
         return { executeSync };
       },
       getProjection: <TProjectionKey extends keyof TProjections>(

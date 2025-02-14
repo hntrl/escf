@@ -1,247 +1,361 @@
 import { DurableObject } from "cloudflare:workers";
 import { z } from "zod";
+import { ArrayOrValue, InferType, PromiseOrValue } from "./utils";
+import { Env } from "./env";
 
-import type { Env } from "./env";
+type AggregateEventType = string;
+type AggregateEventSchemas = Record<AggregateEventType, z.ZodTypeAny>;
+type AggregateEventInput<TEventSchemas extends AggregateEventSchemas> = {
+  [K in keyof TEventSchemas]: {
+    type: K extends string ? K : never;
+    payload: InferType<TEventSchemas[K]>;
+  };
+}[keyof TEventSchemas];
+type AggregateEvent<TEventSchemas extends AggregateEventSchemas> =
+  AggregateEventInput<TEventSchemas> & {
+    timestamp: number;
+    aggregate: string;
+    aggregateId: AggregateIdentifier;
+  };
 
-export type InferType<T> = T extends z.ZodTypeAny ? z.infer<T> : never;
-export type ArrayOrValue<T> = T | T[];
-export type PromiseOrValue<T> = Promise<T> | T;
+type AggregateCommandType = string;
+type AggregateCommandSchemas = Record<AggregateCommandType, z.ZodTypeAny>;
+type AggregateCommand<TCommandSchemas extends AggregateCommandSchemas> = {
+  [K in keyof TCommandSchemas]: {
+    type: K extends string ? K : never;
+    payload: InferType<TCommandSchemas[K]>;
+  };
+}[keyof TCommandSchemas];
+
+async function validateCommandInput<
+  TCommandSchemas extends AggregateCommandSchemas
+>(
+  type: keyof TCommandSchemas,
+  payload: InferType<TCommandSchemas[keyof TCommandSchemas]>,
+  schemas: TCommandSchemas
+): Promise<InferType<TCommandSchemas[keyof TCommandSchemas]>> {
+  const schema = schemas[type];
+  if (!schema) throw new Error(`Command ${String(type)} not found`);
+  const validation = schema.safeParse(payload);
+  if (!validation.success) throw validation.error;
+  return validation.data;
+}
 
 export type AggregateIdentifier = string;
+export type EmptyAggregate = Aggregate<any, any>;
 
-export type AggregateStateDef<TSchema extends z.ZodTypeAny = z.ZodTypeAny> =
-  TSchema;
+export interface Aggregate<
+  TEventSchemas extends AggregateEventSchemas,
+  TCommandSchemas extends AggregateCommandSchemas
+> {
+  readonly aggregateId: PromiseOrValue<AggregateIdentifier>;
+  _receiveCommand<K extends keyof TCommandSchemas>(
+    type: K,
+    payload: InferType<TCommandSchemas[K]>
+  ): Promise<Array<AggregateEvent<TEventSchemas>>>;
+}
 
-// TODO: events & commands that are not built using their respective factories should have unknown schema types
-// e.x. this should be the default:
-//      UserCreated: { schema: z.object(...), reducer: (event: unknown, state: TState) => TState }
-//      this should be the desired behavior:
-//      UserCreated: define({ schema: z.object(...), reducer: (event: TSchema, state: TState) => TState })
+export interface AggregateGetter<T extends EmptyAggregate = EmptyAggregate> {
+  _getAggregate(env: Env, aggregateId?: AggregateIdentifier): PromiseOrValue<T>;
+}
 
-export type AggregateEventDef<
-  TAggregateState extends z.ZodTypeAny,
-  TSchema extends z.ZodTypeAny = z.ZodUnknown
-> = {
-  schema: TSchema;
-  reducer: (params: {
-    payload: TSchema extends z.ZodUnknown ? unknown : InferType<TSchema>;
-    state: InferType<TAggregateState>;
-    timestamp: number;
-  }) => InferType<TAggregateState>;
-};
+export interface AggregateCtor<T extends EmptyAggregate = EmptyAggregate>
+  extends AggregateGetter<T> {
+  new (...args: any[]): T;
+}
 
-export type NamedAggregateEventDefs<TAggregateState extends AggregateStateDef> =
-  Record<string, AggregateEventDef<TAggregateState, z.ZodTypeAny>>;
+export type ExtractAggregate<T> = T extends AggregateGetter<infer TAggregate>
+  ? TAggregate
+  : T extends AggregateCtor<infer TAggregate>
+  ? TAggregate
+  : never;
+export type ExtractAggregateEvent<
+  T,
+  TEventType extends ExtractAggregateEvent<T>["type"] | unknown = unknown
+> = T extends AggregateObject<infer TEventSchemas, any>
+  ? TEventType extends unknown
+    ? AggregateEvent<TEventSchemas>
+    : Extract<AggregateEvent<TEventSchemas>, { type: TEventType }>
+  : never;
+export type ExtractAggregateCommand<
+  T,
+  TCommandType extends ExtractAggregateCommand<T>["type"] | unknown = unknown
+> = T extends AggregateObject<any, infer TCommandSchemas>
+  ? TCommandType extends unknown
+    ? AggregateCommand<TCommandSchemas>
+    : Extract<AggregateCommand<TCommandSchemas>, { type: TCommandType }>
+  : never;
 
-export type AggregateEventInput<
-  TEventDefs extends NamedAggregateEventDefs<z.ZodTypeAny>
-> = {
-  [K in keyof TEventDefs]: {
-    type: K extends string ? K : never;
-    payload: InferType<TEventDefs[K]["schema"]>;
-  };
-}[keyof TEventDefs];
+export abstract class AggregateObject<
+  TEventSchemas extends AggregateEventSchemas,
+  TCommandSchemas extends AggregateCommandSchemas
+> implements Aggregate<TEventSchemas, TCommandSchemas>
+{
+  constructor(
+    readonly aggregateId: AggregateIdentifier,
+    readonly eventSchemas: TEventSchemas,
+    readonly commandSchemas: TCommandSchemas
+  ) {}
 
-export type AggregateEvent<
-  TEventDefs extends NamedAggregateEventDefs<z.ZodTypeAny>
-> = AggregateEventInput<TEventDefs> & {
-  timestamp: number;
-  aggregate: string;
-  aggregateId: string;
-};
+  abstract execute<K extends keyof TCommandSchemas>(
+    type: K,
+    payload: InferType<TCommandSchemas[K]>
+  ): Promise<Array<AggregateEvent<TEventSchemas>>>;
 
-export type AggregateCommandDef<
-  TAggregateState extends z.ZodTypeAny,
-  TAggregateEventDefs extends NamedAggregateEventDefs<TAggregateState>,
-  TSchema extends z.ZodTypeAny = z.ZodUnknown
-> = {
-  schema: TSchema;
-  handler: (
-    payload: TSchema extends z.ZodUnknown ? unknown : InferType<TSchema>,
-    state: InferType<TAggregateState> | null
-  ) => PromiseOrValue<ArrayOrValue<AggregateEventInput<TAggregateEventDefs>>>;
-};
+  public async _receiveCommand<K extends keyof TCommandSchemas>(
+    type: K,
+    payload: InferType<TCommandSchemas[K]>
+  ): Promise<Array<AggregateEvent<TEventSchemas>>> {
+    payload = await validateCommandInput(type, payload, this.commandSchemas);
+    return this.execute(type, payload);
+  }
 
-export type NamedAggregateCommandDefs<
-  TAggregateState extends AggregateStateDef,
-  TAggregateEventDefs extends NamedAggregateEventDefs<TAggregateState>
-> = Record<
-  string,
-  AggregateCommandDef<TAggregateState, TAggregateEventDefs, z.ZodTypeAny>
->;
+  static _getAggregate(
+    env: Env,
+    aggregateId?: AggregateIdentifier
+  ): Promise<Aggregate<any, any>> {
+    throw new Error("AggregateObject must implement static _getAggregate().");
+  }
+}
 
-export type AggregateCommand<
-  TCommandDefs extends NamedAggregateCommandDefs<
-    z.ZodTypeAny,
-    NamedAggregateEventDefs<z.ZodTypeAny>
+export abstract class AggregateDurableObject<
+    TEventSchemas extends AggregateEventSchemas,
+    TCommandSchemas extends AggregateCommandSchemas
   >
-> = {
-  [K in keyof TCommandDefs]: {
-    type: K extends string ? K : never;
-    payload: InferType<TCommandDefs[K]["schema"]>;
-  };
-}[keyof TCommandDefs];
-
-export abstract class AggregateBase<
-  TState extends AggregateStateDef,
-  TEventDefs extends NamedAggregateEventDefs<TState>,
-  TCommandDefs extends NamedAggregateCommandDefs<TState, TEventDefs>
-> extends DurableObject {
-  state: InferType<TState> | null = null;
+  extends DurableObject
+  implements Aggregate<TEventSchemas, TCommandSchemas>
+{
+  get aggregateId(): Promise<AggregateIdentifier> {
+    return Promise.resolve(this.ctx.id.toString());
+  }
 
   constructor(
     readonly ctx: DurableObjectState,
     readonly env: Env,
-    readonly name: string,
-    readonly stateSchema: TState,
-    readonly eventDefinitions: TEventDefs,
-    readonly commandDefinitions: TCommandDefs
+    readonly eventSchemas: TEventSchemas,
+    readonly commandSchemas: TCommandSchemas
   ) {
     super(ctx, env);
-    this.ctx.blockConcurrencyWhile(async () => {
-      const storage = await this.ctx.storage.get<InferType<TState>>("state");
-      this.state = storage ?? null;
-    });
   }
 
-  async execute<K extends keyof TCommandDefs>(
+  abstract execute<K extends keyof TCommandSchemas>(
     type: K,
-    payload: InferType<TCommandDefs[K]["schema"]>
-  ): Promise<Array<AggregateEvent<TEventDefs>>> {
-    const command = this.commandDefinitions[type];
-    if (!command) throw new Error(`Command ${String(type)} not found`);
+    payload: InferType<TCommandSchemas[K]>
+  ): Promise<Array<AggregateEvent<TEventSchemas>>>;
 
-    const validation = command.schema.safeParse(payload);
-    if (!validation.success) {
-      console.error(validation.error);
-      throw validation.error;
-    }
+  public async _receiveCommand<K extends keyof TCommandSchemas>(
+    type: K,
+    payload: InferType<TCommandSchemas[K]>
+  ): Promise<Array<AggregateEvent<TEventSchemas>>> {
+    payload = await validateCommandInput(type, payload, this.commandSchemas);
+    return this.execute(type, payload);
+  }
 
-    const eventOrEvents = await command.handler(validation.data, this.state);
-    const eventInputs = Array.isArray(eventOrEvents)
-      ? eventOrEvents
-      : [eventOrEvents];
-
-    const events: AggregateEvent<TEventDefs>[] = eventInputs.map((event) => ({
-      timestamp: Date.now(),
-      aggregate: this.name,
-      aggregateId: this.ctx.id.toString(),
-      ...event,
-    }));
-
-    for (const event of events) {
-      const eventDefinition = this.eventDefinitions[event.type];
-      if (!eventDefinition) continue;
-      // TODO: {} as InferType<TState> is a hack to get this shipped. we need
-      // to handle events from an uninitialized state, but introducing null to
-      // the type is a breaking change
-      const nextState = eventDefinition.reducer({
-        payload: event.payload,
-        state: this.state ?? ({} as InferType<TState>),
-        timestamp: event.timestamp,
-      });
-      const validation = this.stateSchema.safeParse(nextState);
-      if (!validation.success) {
-        console.error(validation.error);
-        throw validation.error;
-      }
-      this.state = validation.data;
+  static async _getAggregate(
+    env: Env,
+    aggregateId?: string
+  ): Promise<Aggregate<any, any>> {
+    const namespace = env[this.constructor.name] as DurableObjectNamespace<
+      AggregateDurableObject<any, any>
+    >;
+    if (!namespace) {
+      throw new Error(
+        `Could not find durable object namespace for ${this.constructor.name}. Make sure that the binding name and aggregate name are the same in your wrangler.toml file. (i.e. { name = "ExampleAggregate", class_name = "ExampleAggregate" })`
       );
     }
-    await this.ctx.storage.put("state", this.state);
-
-    return events;
+    const stubId = namespace.idFromString(
+      aggregateId ?? namespace.newUniqueId().toString()
+    );
+    const stub = namespace.get(stubId);
+    // @ts-expect-error
+    return stub;
   }
 }
 
-export interface Aggregate<
-  TState extends AggregateStateDef,
-  TEventDefs extends NamedAggregateEventDefs<TState>,
-  TCommandDefs extends NamedAggregateCommandDefs<TState, TEventDefs>
-> extends AggregateBase<TState, TEventDefs, TCommandDefs> {
-  new (ctx: DurableObjectState, env: Env): AggregateBase<
-    TState,
-    TEventDefs,
-    TCommandDefs
-  >;
-}
+type BaseAggregateStateDef<TSchema extends z.ZodTypeAny = z.ZodTypeAny> =
+  TSchema;
 
-export type EmptyAggregate = Aggregate<any, any, any>;
-
-export type ExtractAggregateEvent<T> = T extends Aggregate<
-  any,
-  infer TEventDefs,
-  any
->
-  ? AggregateEvent<TEventDefs>
-  : never;
-
-export type ExtractAggregateCommand<T> = T extends Aggregate<
-  any,
-  any,
-  infer TCommandDefs
->
-  ? TCommandDefs extends NamedAggregateCommandDefs<any, any>
-    ? AggregateCommand<TCommandDefs>
-    : never
-  : never;
-
-export type AggregateCommandPayload<
-  T extends EmptyAggregate,
-  TCommandType extends ExtractAggregateCommand<T>["type"]
-> = Extract<ExtractAggregateCommand<T>, { type: TCommandType }>["payload"];
-
-export const aggregate = Object.assign(
-  <
-    TState extends AggregateStateDef,
-    TEventDefs extends NamedAggregateEventDefs<TState>,
-    TCommandDefs extends NamedAggregateCommandDefs<TState, TEventDefs>
-  >(opts: {
-    name: string;
-    state: TState;
-    events: TEventDefs;
-    commands: TCommandDefs;
-  }): Aggregate<TState, TEventDefs, TCommandDefs> => {
-    class AggregateEntrypoint extends AggregateBase<
-      TState,
-      TEventDefs,
-      TCommandDefs
-    > {
-      constructor(ctx: DurableObjectState, env: Env) {
-        super(ctx, env, opts.name, opts.state, opts.events, opts.commands);
-      }
-    }
-    Object.defineProperty(AggregateEntrypoint, "name", { value: opts.name });
-    return AggregateEntrypoint as Aggregate<TState, TEventDefs, TCommandDefs>;
-  },
-  {
-    state: <TSchema extends z.ZodTypeAny>(schema: TSchema): TSchema => schema,
-    events: <
-      TAggregateState extends AggregateStateDef,
-      TEventDefs extends NamedAggregateEventDefs<TAggregateState>
-    >(
-      state: TAggregateState,
-      factory: (
-        define: <TSchema extends z.ZodTypeAny>(
-          def: AggregateEventDef<TAggregateState, TSchema>
-        ) => AggregateEventDef<TAggregateState, TSchema>
-      ) => TEventDefs
-    ): TEventDefs => factory((d) => d),
-    commands: <
-      TAggregateState extends AggregateStateDef,
-      TEventDefs extends NamedAggregateEventDefs<TAggregateState>,
-      TCommandDefs extends NamedAggregateCommandDefs<
-        TAggregateState,
-        TEventDefs
+type BaseAggregateCommandDef<
+  TAggregateState extends BaseAggregateStateDef,
+  TEventDefs extends NamedBaseAggregateEventDefs<TAggregateState>,
+  TSchema extends z.ZodTypeAny = z.ZodTypeAny
+> = {
+  schema: TSchema;
+  handler: (params: {
+    payload: InferType<TSchema>;
+    state: InferType<TAggregateState> | null;
+  }) => PromiseOrValue<
+    ArrayOrValue<
+      AggregateEventInput<
+        BaseAggregateEventSchemas<TAggregateState, TEventDefs>
       >
-    >(
-      state: TAggregateState,
-      events: TEventDefs,
-      factory: (
-        define: <TSchema extends z.ZodTypeAny>(
-          def: AggregateCommandDef<TAggregateState, TEventDefs, TSchema>
-        ) => AggregateCommandDef<TAggregateState, TEventDefs, TSchema>
-      ) => TCommandDefs
-    ): TCommandDefs => factory((d) => d),
-  }
-);
+    >
+  >;
+};
+
+const test = {} as BaseAggregateEventSchemas<
+  any,
+  any
+> extends AggregateEventSchemas
+  ? true
+  : false;
+
+type NamedBaseAggregateCommandDefs<
+  TAggregateState extends BaseAggregateStateDef,
+  TEventDefs extends NamedBaseAggregateEventDefs<TAggregateState>
+> = Record<
+  string,
+  BaseAggregateCommandDef<TAggregateState, TEventDefs, z.ZodTypeAny>
+>;
+
+type BaseAggregateEventDef<
+  TAggregateState extends BaseAggregateStateDef,
+  TSchema extends z.ZodTypeAny = z.ZodTypeAny
+> = {
+  schema: TSchema;
+  reducer: (params: {
+    payload: InferType<TSchema>;
+    state: InferType<TAggregateState> | null;
+    timestamp: number;
+  }) => InferType<TAggregateState>;
+};
+
+export type BaseAggregateEventSchemas<
+  TAggregateState extends BaseAggregateStateDef,
+  TEventDefs extends NamedBaseAggregateEventDefs<TAggregateState>
+> = {
+  [K in keyof TEventDefs]: InferType<TEventDefs[K]["schema"]>;
+}[keyof TEventDefs];
+
+type NamedBaseAggregateEventDefs<
+  TAggregateState extends BaseAggregateStateDef
+> = Record<string, BaseAggregateEventDef<TAggregateState>>;
+
+type BaseAggregateCommandSchemas<
+  TAggregateState extends BaseAggregateStateDef,
+  TCommandDefs extends NamedBaseAggregateCommandDefs<
+    TAggregateState,
+    NamedBaseAggregateEventDefs<TAggregateState>
+  >
+> = {
+  [K in keyof TCommandDefs]: InferType<TCommandDefs[K]["schema"]>;
+}[keyof TCommandDefs];
+
+function BaseAggregate<
+  TState extends BaseAggregateStateDef,
+  TEventDefs extends NamedBaseAggregateEventDefs<TState>,
+  TCommandDefs extends NamedBaseAggregateCommandDefs<TState, TEventDefs>
+>(opts: {
+  name: string;
+  state: TState;
+  events: TEventDefs;
+  commands: TCommandDefs;
+}): AggregateGetter<
+  Aggregate<
+    BaseAggregateEventSchemas<TState, TEventDefs>,
+    BaseAggregateCommandSchemas<TState, TCommandDefs>
+  >
+> {
+  type TEventSchemas = BaseAggregateEventSchemas<TState, TEventDefs>;
+  const eventSchemas = Object.fromEntries(
+    Object.entries(opts.events).map(([key, def]) => [key, def.schema])
+  ) as TEventSchemas;
+  type TCommandSchemas = BaseAggregateCommandSchemas<TState, TCommandDefs>;
+  const commandSchemas = Object.fromEntries(
+    Object.entries(opts.commands).map(([key, def]) => [key, def.schema])
+  ) as TCommandSchemas;
+
+  const entrypoint = class extends AggregateDurableObject<
+    TEventSchemas,
+    TCommandSchemas
+  > {
+    state: InferType<TState> | null = null;
+
+    constructor(ctx: DurableObjectState, env: Env) {
+      super(ctx, env, eventSchemas, commandSchemas);
+      this.ctx.blockConcurrencyWhile(async () => {
+        const storage = await this.ctx.storage.get<InferType<TState>>("state");
+        this.state = storage ?? null;
+      });
+    }
+
+    async execute<K extends keyof TCommandSchemas>(
+      type: K,
+      payload: InferType<TCommandSchemas[K]>
+    ): Promise<Array<AggregateEvent<TEventSchemas>>> {
+      const command = opts.commands[type as keyof TCommandDefs];
+      if (!command) throw new Error(`Command ${String(type)} not found`);
+
+      const eventOrEvents = await command.handler({
+        payload,
+        state: this.state,
+      });
+      const eventInputs = Array.isArray(eventOrEvents)
+        ? eventOrEvents
+        : [eventOrEvents];
+
+      const events: AggregateEvent<TEventSchemas>[] = eventInputs.map(
+        (event) => ({
+          timestamp: Date.now(),
+          aggregate: this.constructor.name,
+          aggregateId: this.ctx.id.toString(),
+          ...event,
+        })
+      );
+
+      for (const event of events) {
+        const eventDefinition = opts.events[event.type];
+        if (!eventDefinition) continue;
+        // TODO: {} as InferType<TState> is a hack to get this shipped. we need
+        // to handle events from an uninitialized state, but introducing null to
+        // the type is a breaking change
+        const nextState = eventDefinition.reducer({
+          payload: event.payload,
+          state: this.state ?? ({} as InferType<TState>),
+          timestamp: event.timestamp,
+        });
+        const validation = opts.state.safeParse(nextState);
+        if (!validation.success) {
+          throw validation.error;
+        }
+        this.state = validation.data;
+      }
+      await this.ctx.storage.put("state", this.state);
+
+      return events;
+    }
+  };
+  Object.defineProperty(entrypoint, "name", { value: opts.name });
+  return entrypoint;
+}
+
+export const aggregate = Object.assign(BaseAggregate, {
+  state: <TSchema extends z.ZodTypeAny>(schema: TSchema): TSchema => schema,
+  events: <
+    TAggregateState extends BaseAggregateStateDef,
+    TEventDefs extends NamedBaseAggregateEventDefs<TAggregateState>
+  >(
+    state: TAggregateState,
+    factory: (
+      define: <TSchema extends z.ZodTypeAny>(
+        def: BaseAggregateEventDef<TAggregateState, TSchema>
+      ) => BaseAggregateEventDef<TAggregateState, TSchema>
+    ) => TEventDefs
+  ): TEventDefs => factory((d) => d),
+  commands: <
+    TAggregateState extends BaseAggregateStateDef,
+    TEventDefs extends NamedBaseAggregateEventDefs<TAggregateState>,
+    TCommandDefs extends NamedBaseAggregateCommandDefs<
+      TAggregateState,
+      TEventDefs
+    >
+  >(
+    state: TAggregateState,
+    events: TEventDefs,
+    factory: (
+      define: <TSchema extends z.ZodTypeAny>(
+        def: BaseAggregateCommandDef<TAggregateState, TEventDefs, TSchema>
+      ) => BaseAggregateCommandDef<TAggregateState, TEventDefs, TSchema>
+    ) => TCommandDefs
+  ): TCommandDefs => factory((d) => d),
+});
